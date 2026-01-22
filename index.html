@@ -18,16 +18,18 @@
 
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 0px; background: transparent; }
+        /* Erlaubt dem Fenster jede Größe */
         html, body, #root { height: 100%; margin: 0; overflow: hidden; min-width: 0 !important; width: 100%; }
         body { -webkit-user-select: none; user-select: none; }
     </style>
 </head>
-<body class="bg-transparent font-sans">
-    <div id="root"></div>
+<body class="bg-slate-50 font-sans">
+    <div id="root" class="h-full w-full"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // Icons
         const IconBase = ({ size = 24, className = "", children }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
         );
@@ -58,20 +60,26 @@
                     { id: 4, code: 'DEV', name: 'Website Projekt A',  color: 'bg-blue-500', time: 0, isPaid: true },
                     { id: 5, code: 'KDN', name: 'Kunden Beratung',    color: 'bg-green-500', time: 0, isPaid: true },
                 ];
-                // Migration: Sicherstellen, dass isPaid existiert
                 return initial.map(p => ({...p, isPaid: p.isPaid !== undefined ? p.isPaid : (p.code !== 'P' && p.code !== 'OFF' && p.code !== 'AKQ')}));
             });
             const [activeProjectId, setActiveProjectId] = useState(null);
-            const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+            const [windowWidth, setWindowWidth] = useState(window.innerWidth);
             const [forceWidgetMode, setForceWidgetMode] = useState(false);
+            const [isHoveringSidebar, setIsHoveringSidebar] = useState(false);
+            
             const [showAddModal, setShowAddModal] = useState(false);
             const [showPinInfo, setShowPinInfo] = useState(false);
-            
             const [newProjectCode, setNewProjectCode] = useState('');
             const [newProjectName, setNewProjectName] = useState('');
             const [newProjectPaid, setNewProjectPaid] = useState(true);
-            
             const timerRef = useRef(null);
+
+            // Fenstergröße überwachen
+            useEffect(() => {
+                const handleResize = () => setWindowWidth(window.innerWidth);
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
 
             useEffect(() => { localStorage.setItem('timeTrackerProjects_v2', JSON.stringify(projects)); }, [projects]);
             useEffect(() => {
@@ -129,118 +137,119 @@
                 document.body.appendChild(link); link.click(); document.body.removeChild(link);
             };
 
-            // Stats Calculations
             const totalSeconds = projects.reduce((acc, curr) => acc + curr.time, 0);
             const paidSeconds = projects.filter(p => p.isPaid).reduce((acc, curr) => acc + curr.time, 0);
             const unpaidSeconds = totalSeconds - paidSeconds;
-            
-            // Pie Chart Calculation
             const paidPercentage = totalSeconds > 0 ? (paidSeconds / totalSeconds) * 100 : 0;
-            const unpaidPercentage = 100 - paidPercentage;
+
+            // LOGIK FÜR RESPONSIVENES DESIGN
+            // Entscheiden, ob das Dashboard (großer Bereich) angezeigt wird
+            const showDashboard = !forceWidgetMode && windowWidth >= 800;
+            
+            // Entscheiden, wie breit die Sidebar ist
+            // Wenn Dashboard versteckt ist -> Sidebar ist IMMER 100% breit (w-full)
+            // Wenn Dashboard da ist -> Sidebar ist fixiert (w-60 oder w-16)
+            let sidebarWidthClass = 'w-full';
+            if (showDashboard) {
+                sidebarWidthClass = isHoveringSidebar ? 'w-60' : 'w-16';
+            }
+
+            // Soll die Sidebar detaillierten Text anzeigen?
+            // Ja, wenn:
+            // 1. Wir hovern (egal wie groß das Fenster ist)
+            // 2. ODER: Das Dashboard ist weg UND das Fenster ist breit genug (> 200px), dass Text reinpasst
+            const showSidebarText = isHoveringSidebar || (!showDashboard && windowWidth > 200);
+
+            // Icon Ausrichtung: Zentriert wenn Text weg ist und Dashboard da ist
+            const iconJustifyClass = (!showSidebarText && showDashboard) ? 'justify-center' : 'pl-2';
+
 
             return (
-                <div className="h-full flex bg-gray-50">
-                    {/* Main Content */}
-                    <div className={`${forceWidgetMode ? 'hidden' : 'hidden md:flex'} flex-1 p-8 flex-col justify-center max-w-4xl mx-auto transition-opacity duration-300`}>
-                        <h1 className="text-3xl font-bold mb-4 text-gray-900">Arbeitstag Übersicht</h1>
-                        <p className="mb-6 text-gray-600">Nutze den Widget-Button (oben rechts), um nur die Leiste zu sehen.</p>
-                        
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
-                            {/* Status Card */}
-                            <div className={`p-6 rounded-xl border shadow-sm ${activeProjectId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
-                                <h2 className="font-semibold mb-2 flex items-center gap-2 text-lg">
-                                    <Clock size={20} className={activeProjectId ? "text-blue-500" : "text-gray-400"} /> Aktueller Fokus
-                                </h2>
-                                <div className="text-2xl font-bold text-gray-800 mb-1">
-                                    {activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Inaktiv"}
-                                </div>
-                                {activeProjectId && (
-                                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">
-                                        Tracking läuft
-                                    </span>
-                                )}
-                            </div>
-
-                            {/* Weekly/Total Overview Chart */}
-                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
-                                <h2 className="font-semibold mb-4 text-lg">Verteilung (Aktuell)</h2>
-                                <div className="flex items-center gap-6">
-                                    {/* CSS Pie Chart */}
-                                    <div className="relative w-24 h-24 rounded-full flex-shrink-0"
-                                         style={{
-                                             background: `conic-gradient(#22c55e ${paidPercentage}%, #94a3b8 ${paidPercentage}% 100%)`
-                                         }}>
-                                         {/* Inner Circle for Donut effect */}
-                                         <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center shadow-inner">
-                                             <span className="text-xs font-bold text-gray-500">
-                                                 {Math.round(paidPercentage)}%
-                                             </span>
-                                         </div>
-                                    </div>
-                                    
-                                    {/* Legend */}
-                                    <div className="flex-1 space-y-3">
-                                        <div>
-                                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                                Bezahlt
-                                            </div>
-                                            <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(paidSeconds)}</div>
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                                                <div className="w-3 h-3 rounded-full bg-slate-400"></div>
-                                                Intern / Admin
-                                            </div>
-                                            <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(unpaidSeconds)}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                <div className="h-full w-full flex bg-gray-50 overflow-hidden">
+                    {/* --- MAIN CONTENT (DASHBOARD) --- 
+                        Wird komplett ausgeblendet (hidden), wenn kein Platz ist oder Widget-Mode aktiv ist. 
+                    */}
+                    {showDashboard && (
+                        <div className="flex-1 p-8 flex flex-col justify-center max-w-4xl mx-auto transition-opacity duration-300">
+                            <h1 className="text-3xl font-bold mb-4 text-gray-900">Arbeitstag Übersicht</h1>
+                            <p className="mb-6 text-gray-600">Nutze den Widget-Button (oben rechts), um Platz zu sparen.</p>
                             
-                            {/* Total Time Footer Card */}
-                            <div className="lg:col-span-2 bg-slate-900 text-white p-4 rounded-xl shadow-lg flex justify-between items-center">
-                                <div>
-                                    <span className="text-slate-400 text-sm block">Gesamtzeit heute</span>
-                                    <span className="text-2xl font-mono font-bold tracking-wider">{formatTime(totalSeconds)}</span>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+                                <div className={`p-6 rounded-xl border shadow-sm ${activeProjectId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
+                                    <h2 className="font-semibold mb-2 flex items-center gap-2 text-lg">
+                                        <Clock size={20} className={activeProjectId ? "text-blue-500" : "text-gray-400"} /> Aktueller Fokus
+                                    </h2>
+                                    <div className="text-2xl font-bold text-gray-800 mb-1">
+                                        {activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Inaktiv"}
+                                    </div>
+                                    {activeProjectId && (
+                                        <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">
+                                            Tracking läuft
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="text-right">
-                                     <span className="text-slate-400 text-sm block">Umsatz-relevant</span>
-                                     <span className="text-xl font-mono text-green-400">{formatDecimalTime(paidSeconds)} Std.</span>
+
+                                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
+                                    <h2 className="font-semibold mb-4 text-lg">Verteilung (Aktuell)</h2>
+                                    <div className="flex items-center gap-6">
+                                        <div className="relative w-24 h-24 rounded-full flex-shrink-0"
+                                             style={{ background: `conic-gradient(#22c55e ${paidPercentage}%, #94a3b8 ${paidPercentage}% 100%)` }}>
+                                             <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center shadow-inner">
+                                                 <span className="text-xs font-bold text-gray-500">{Math.round(paidPercentage)}%</span>
+                                             </div>
+                                        </div>
+                                        <div className="flex-1 space-y-3">
+                                            <div>
+                                                <div className="flex items-center gap-2 text-sm text-gray-600"><div className="w-3 h-3 rounded-full bg-green-500"></div>Bezahlt</div>
+                                                <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(paidSeconds)}</div>
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 text-sm text-gray-600"><div className="w-3 h-3 rounded-full bg-slate-400"></div>Intern / Admin</div>
+                                                <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(unpaidSeconds)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="lg:col-span-2 bg-slate-900 text-white p-4 rounded-xl shadow-lg flex justify-between items-center">
+                                    <div>
+                                        <span className="text-slate-400 text-sm block">Gesamtzeit heute</span>
+                                        <span className="text-2xl font-mono font-bold tracking-wider">{formatTime(totalSeconds)}</span>
+                                    </div>
+                                    <div className="text-right">
+                                         <span className="text-slate-400 text-sm block">Umsatz-relevant</span>
+                                         <span className="text-xl font-mono text-green-400">{formatDecimalTime(paidSeconds)} Std.</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Sidebar: Breite passt sich an */}
+                    {/* --- SIDEBAR --- 
+                        Passt sich jetzt intelligent an. Wenn Dashboard weg ist, wird sie 'w-full'.
+                    */}
                     <div 
-                        onMouseEnter={() => setIsSidebarExpanded(true)}
-                        onMouseLeave={() => setIsSidebarExpanded(false)}
-                        className={`h-full bg-slate-900 text-white shadow-xl flex flex-col transition-all duration-300 z-50
-                        ${forceWidgetMode ? 'w-full' : (isSidebarExpanded ? 'w-full md:w-60' : 'w-16 md:w-16')} flex-shrink-0 border-l border-slate-800 relative`}
+                        onMouseEnter={() => setIsHoveringSidebar(true)}
+                        onMouseLeave={() => setIsHoveringSidebar(false)}
+                        className={`h-full bg-slate-900 text-white shadow-xl flex flex-col transition-all duration-300 z-50 flex-shrink-0 border-l border-slate-800 relative ${sidebarWidthClass}`}
                     >
                         {/* Header */}
                         <div className="p-3 pt-4 flex justify-between items-center bg-slate-950 border-b border-slate-800">
-                            {isSidebarExpanded && <span className="font-bold tracking-wide pl-1 truncate text-sm">Zeit</span>}
-                            <div className={`flex gap-1 ${isSidebarExpanded ? '' : 'w-full justify-center'}`}>
+                            {showSidebarText && <span className="font-bold tracking-wide pl-1 truncate text-sm">Zeit</span>}
+                            <div className={`flex gap-1 ${(!showSidebarText) ? 'w-full justify-center' : ''}`}>
                                 <button onClick={() => setForceWidgetMode(!forceWidgetMode)} className={`p-1.5 rounded-full hover:text-white ${forceWidgetMode ? 'text-blue-400 bg-slate-800' : 'text-slate-400 hover:bg-slate-800'}`} title={forceWidgetMode ? "Zurück zur Vollansicht" : "Widget Modus (nur Leiste)"}>
                                     <Layout size={18} />
                                 </button>
-                                {!forceWidgetMode && (
-                                    <button onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white">
-                                        {isSidebarExpanded ? <XIcon size={18} /> : <Menu size={20} />}
-                                    </button>
-                                )}
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar">
                             {projects.map(p => {
                                 const active = activeProjectId === p.id;
-                                const justifyClass = (!isSidebarExpanded && !forceWidgetMode) ? 'justify-center' : 'pl-2';
                                 
                                 return (
-                                    <div key={p.id} className={`group flex items-center cursor-pointer select-none ${justifyClass}`} onClick={() => toggleTimer(p.id)}>
+                                    <div key={p.id} className={`group flex items-center cursor-pointer select-none ${iconJustifyClass}`} onClick={() => toggleTimer(p.id)}>
+                                        {/* Icon Bubble */}
                                         <div className={`relative flex flex-col items-center justify-center rounded-full shadow-lg transition-all duration-200 border-2 
                                             ${active ? `scale-110 ring-2 ring-opacity-50 border-transparent ${p.code === 'P' ? 'ring-gray-400' : 'ring-blue-400'}` : 'hover:scale-105 border-slate-700'} 
                                             ${p.color} w-10 h-10 flex-shrink-0`}>
@@ -255,7 +264,8 @@
                                             </div>
                                         </div>
                                         
-                                        {isSidebarExpanded && (
+                                        {/* Text Info */}
+                                        {showSidebarText && (
                                             <div className="ml-3 min-w-0 flex-1 overflow-hidden">
                                                 <div className={`text-xs font-medium truncate flex items-center gap-1 ${active ? 'text-white' : 'text-slate-400'}`}>
                                                     {p.name}
@@ -264,10 +274,9 @@
                                             </div>
                                         )}
 
-                                        {/* Actions: Bezahlt-Toggle & Löschen */}
-                                        {isSidebarExpanded && (
+                                        {/* Actions */}
+                                        {showSidebarText && (
                                             <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                 {/* Dollar Toggle */}
                                                 <button 
                                                     onClick={(e) => togglePaidStatus(p.id, e)}
                                                     className={`p-1 mr-1 rounded ${p.isPaid ? 'text-green-400 hover:text-green-300' : 'text-slate-600 hover:text-slate-400'}`}
@@ -275,8 +284,6 @@
                                                 >
                                                     <DollarSign size={14} />
                                                 </button>
-                                                
-                                                {/* Löschen */}
                                                 {!p.isSystem && (
                                                     <button onClick={(e)=>handleDeleteProject(p.id, e)} className="p-1 text-slate-600 hover:text-red-400">
                                                         <Trash2 size={14}/>
@@ -287,19 +294,20 @@
                                     </div>
                                 );
                             })}
-                            <div className={`pt-2 flex ${(!isSidebarExpanded && !forceWidgetMode) ? 'justify-center' : 'pl-2'}`}>
-                                <button onClick={() => setShowAddModal(true)} className={`flex items-center justify-center rounded-full border border-dashed border-slate-700 text-slate-500 hover:text-white hover:border-slate-500 transition-all ${isSidebarExpanded ? 'w-full py-1.5 hover:bg-slate-800' : 'w-10 h-10'}`}>
+                            
+                            <div className={`pt-2 flex ${(!showSidebarText) ? 'justify-center' : 'pl-2'}`}>
+                                <button onClick={() => setShowAddModal(true)} className={`flex items-center justify-center rounded-full border border-dashed border-slate-700 text-slate-500 hover:text-white hover:border-slate-500 transition-all ${showSidebarText ? 'w-full py-1.5 hover:bg-slate-800' : 'w-10 h-10'}`}>
                                     <Plus size={16} />
                                 </button>
                             </div>
                         </div>
 
                         <div className="p-2 bg-slate-950 flex flex-col gap-2 border-t border-slate-800">
-                            <button onClick={exportCSV} className={`flex items-center justify-center space-x-2 bg-green-800 hover:bg-green-700 text-white rounded-lg transition-colors ${isSidebarExpanded ? 'py-1.5 px-3' : 'p-2'}`} title="Excel Export">
-                                <Download size={16} /> {isSidebarExpanded && <span className="text-xs font-medium">Export</span>}
+                            <button onClick={exportCSV} className={`flex items-center justify-center space-x-2 bg-green-800 hover:bg-green-700 text-white rounded-lg transition-colors ${showSidebarText ? 'py-1.5 px-3' : 'p-2'}`} title="Excel Export">
+                                <Download size={16} /> {showSidebarText && <span className="text-xs font-medium">Export</span>}
                             </button>
                             <button onClick={() => setShowPinInfo(true)} className="flex items-center justify-center text-slate-600 hover:text-blue-400 py-1 text-[10px] gap-1" title="Immer im Vordergrund">
-                                <Pin size={12} /> {isSidebarExpanded && "Anpinnen"}
+                                <Pin size={12} /> {showSidebarText && "Anpinnen"}
                             </button>
                         </div>
                     </div>
@@ -312,7 +320,6 @@
                                     <input autoFocus maxLength={4} placeholder="Kürzel (z.B. WEB)" className="w-full p-2 border rounded uppercase font-mono" value={newProjectCode} onChange={e=>setNewProjectCode(e.target.value)} />
                                     <input placeholder="Name" className="w-full p-2 border rounded" value={newProjectName} onChange={e=>setNewProjectName(e.target.value)} />
                                     
-                                    {/* Bezahlt Checkbox */}
                                     <label className="flex items-center space-x-2 cursor-pointer p-2 border rounded hover:bg-gray-50">
                                         <input 
                                             type="checkbox" 
@@ -324,7 +331,6 @@
                                             <DollarSign size={16} className="mr-1 text-green-600"/> Bezahltes Projekt?
                                         </div>
                                     </label>
-                                    
                                     <button type="submit" disabled={!newProjectCode||!newProjectName} className="w-full bg-slate-900 text-white py-2 rounded">Speichern</button>
                                 </form>
                             </div>
