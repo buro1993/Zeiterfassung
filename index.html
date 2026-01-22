@@ -46,29 +46,33 @@
         const Globe = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></IconBase>;
         const Pin = (props) => <IconBase {...props}><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></IconBase>;
         const Layout = (props) => <IconBase {...props}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></IconBase>;
+        const DollarSign = (props) => <IconBase {...props}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></IconBase>;
 
         const TimeTracker = () => {
             const [projects, setProjects] = useState(() => {
                 const saved = localStorage.getItem('timeTrackerProjects_v2');
-                return saved ? JSON.parse(saved) : [
-                    { id: 1, code: 'OFF', name: 'Büroarbeit / Admin', color: 'bg-slate-600', time: 0, isSystem: true },
-                    { id: 2, code: 'AKQ', name: 'Akquise',            color: 'bg-orange-600', time: 0, isSystem: true },
-                    { id: 3, code: 'P',   name: 'Pause',              color: 'bg-gray-400', time: 0, isSystem: true },
-                    { id: 4, code: 'DEV', name: 'Website Projekt A',  color: 'bg-blue-500', time: 0 },
-                    { id: 5, code: 'KDN', name: 'Kunden Beratung',    color: 'bg-green-500', time: 0 },
+                const initial = saved ? JSON.parse(saved) : [
+                    { id: 1, code: 'OFF', name: 'Büroarbeit / Admin', color: 'bg-slate-600', time: 0, isSystem: true, isPaid: false },
+                    { id: 2, code: 'AKQ', name: 'Akquise',            color: 'bg-orange-600', time: 0, isSystem: true, isPaid: false },
+                    { id: 3, code: 'P',   name: 'Pause',              color: 'bg-gray-400', time: 0, isSystem: true, isPaid: false },
+                    { id: 4, code: 'DEV', name: 'Website Projekt A',  color: 'bg-blue-500', time: 0, isPaid: true },
+                    { id: 5, code: 'KDN', name: 'Kunden Beratung',    color: 'bg-green-500', time: 0, isPaid: true },
                 ];
+                // Migration: Sicherstellen, dass isPaid existiert
+                return initial.map(p => ({...p, isPaid: p.isPaid !== undefined ? p.isPaid : (p.code !== 'P' && p.code !== 'OFF' && p.code !== 'AKQ')}));
             });
             const [activeProjectId, setActiveProjectId] = useState(null);
             const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
             const [forceWidgetMode, setForceWidgetMode] = useState(false);
             const [showAddModal, setShowAddModal] = useState(false);
             const [showPinInfo, setShowPinInfo] = useState(false);
+            
             const [newProjectCode, setNewProjectCode] = useState('');
             const [newProjectName, setNewProjectName] = useState('');
+            const [newProjectPaid, setNewProjectPaid] = useState(true);
+            
             const timerRef = useRef(null);
 
-            // Keine automatische Einklapp-Logik mehr nötig, da Hover-basiert
-            
             useEffect(() => { localStorage.setItem('timeTrackerProjects_v2', JSON.stringify(projects)); }, [projects]);
             useEffect(() => {
                 if (activeProjectId) {
@@ -89,10 +93,15 @@
                 const colors = ['bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
                 const newId = projects.length > 0 ? Math.max(...projects.map(p => p.id)) + 1 : 1;
                 setProjects([...projects, {
-                    id: newId, code: newProjectCode.toUpperCase().slice(0, 4), name: newProjectName,
-                    color: colors[Math.floor(Math.random() * colors.length)], time: 0
+                    id: newId, 
+                    code: newProjectCode.toUpperCase().slice(0, 4), 
+                    name: newProjectName,
+                    color: colors[Math.floor(Math.random() * colors.length)], 
+                    time: 0,
+                    isPaid: newProjectPaid,
+                    isSystem: false
                 }]);
-                setNewProjectCode(''); setNewProjectName(''); setShowAddModal(false);
+                setNewProjectCode(''); setNewProjectName(''); setNewProjectPaid(true); setShowAddModal(false);
             };
 
             const handleDeleteProject = (id, e) => {
@@ -102,33 +111,103 @@
                     setProjects(projects.filter(p => p.id !== id));
                 }
             };
+            
+            const togglePaidStatus = (id, e) => {
+                e.stopPropagation();
+                setProjects(projects.map(p => p.id === id ? { ...p, isPaid: !p.isPaid } : p));
+            };
 
             const exportCSV = () => {
                 const today = new Date().toLocaleDateString('de-DE');
-                let csv = "data:text/csv;charset=utf-8,Datum;ID;Kürzel;Projekt;Zeit;IndustrieStd;Sekunden\n";
-                projects.forEach(p => { if (p.time > 0) csv += `${today};${p.id};${p.code};${p.name};${formatTime(p.time)};${formatDecimalTime(p.time)};${p.time}\n`; });
+                let csv = "data:text/csv;charset=utf-8,Datum;ID;Kürzel;Projekt;Bezahlt;Zeit;IndustrieStd;Sekunden\n";
+                projects.forEach(p => { 
+                    if (p.time > 0) csv += `${today};${p.id};${p.code};${p.name};${p.isPaid ? 'Ja' : 'Nein'};${formatTime(p.time)};${formatDecimalTime(p.time)};${p.time}\n`; 
+                });
                 const link = document.createElement("a");
                 link.setAttribute("href", encodeURI(csv));
                 link.setAttribute("download", `zeit_${new Date().toISOString().slice(0,10)}.csv`);
                 document.body.appendChild(link); link.click(); document.body.removeChild(link);
             };
 
+            // Stats Calculations
+            const totalSeconds = projects.reduce((acc, curr) => acc + curr.time, 0);
+            const paidSeconds = projects.filter(p => p.isPaid).reduce((acc, curr) => acc + curr.time, 0);
+            const unpaidSeconds = totalSeconds - paidSeconds;
+            
+            // Pie Chart Calculation
+            const paidPercentage = totalSeconds > 0 ? (paidSeconds / totalSeconds) * 100 : 0;
+            const unpaidPercentage = 100 - paidPercentage;
+
             return (
                 <div className="h-full flex bg-gray-50">
                     {/* Main Content */}
-                    <div className={`${forceWidgetMode ? 'hidden' : 'hidden md:flex'} flex-1 p-8 flex-col justify-center max-w-4xl mx-auto`}>
-                        <h1 className="text-3xl font-bold mb-4 text-gray-900">Arbeitstag</h1>
-                        <p className="mb-8 text-gray-600">Nutze den Widget-Button (oben rechts), um nur die Leiste zu sehen.</p>
-                        <div className="grid gap-4">
-                            <div className={`p-4 rounded-xl border ${activeProjectId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
-                                <h2 className="font-semibold mb-1 flex items-center gap-2">
-                                    <Clock size={20} className={activeProjectId ? "text-blue-500" : "text-gray-400"} /> Status
+                    <div className={`${forceWidgetMode ? 'hidden' : 'hidden md:flex'} flex-1 p-8 flex-col justify-center max-w-4xl mx-auto transition-opacity duration-300`}>
+                        <h1 className="text-3xl font-bold mb-4 text-gray-900">Arbeitstag Übersicht</h1>
+                        <p className="mb-6 text-gray-600">Nutze den Widget-Button (oben rechts), um nur die Leiste zu sehen.</p>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+                            {/* Status Card */}
+                            <div className={`p-6 rounded-xl border shadow-sm ${activeProjectId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
+                                <h2 className="font-semibold mb-2 flex items-center gap-2 text-lg">
+                                    <Clock size={20} className={activeProjectId ? "text-blue-500" : "text-gray-400"} /> Aktueller Fokus
                                 </h2>
-                                <div className="text-2xl font-bold">{activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Inaktiv"}</div>
+                                <div className="text-2xl font-bold text-gray-800 mb-1">
+                                    {activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Inaktiv"}
+                                </div>
+                                {activeProjectId && (
+                                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">
+                                        Tracking läuft
+                                    </span>
+                                )}
                             </div>
-                            <div className="bg-white p-4 rounded-xl border border-gray-200">
-                                <h2 className="font-semibold mb-1">Gesamtzeit</h2>
-                                <div className="text-3xl font-mono text-gray-700">{formatTime(projects.reduce((a, c) => a + c.time, 0))}</div>
+
+                            {/* Weekly/Total Overview Chart */}
+                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
+                                <h2 className="font-semibold mb-4 text-lg">Verteilung (Aktuell)</h2>
+                                <div className="flex items-center gap-6">
+                                    {/* CSS Pie Chart */}
+                                    <div className="relative w-24 h-24 rounded-full flex-shrink-0"
+                                         style={{
+                                             background: `conic-gradient(#22c55e ${paidPercentage}%, #94a3b8 ${paidPercentage}% 100%)`
+                                         }}>
+                                         {/* Inner Circle for Donut effect */}
+                                         <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center shadow-inner">
+                                             <span className="text-xs font-bold text-gray-500">
+                                                 {Math.round(paidPercentage)}%
+                                             </span>
+                                         </div>
+                                    </div>
+                                    
+                                    {/* Legend */}
+                                    <div className="flex-1 space-y-3">
+                                        <div>
+                                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                                Bezahlt
+                                            </div>
+                                            <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(paidSeconds)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                <div className="w-3 h-3 rounded-full bg-slate-400"></div>
+                                                Intern / Admin
+                                            </div>
+                                            <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(unpaidSeconds)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Total Time Footer Card */}
+                            <div className="lg:col-span-2 bg-slate-900 text-white p-4 rounded-xl shadow-lg flex justify-between items-center">
+                                <div>
+                                    <span className="text-slate-400 text-sm block">Gesamtzeit heute</span>
+                                    <span className="text-2xl font-mono font-bold tracking-wider">{formatTime(totalSeconds)}</span>
+                                </div>
+                                <div className="text-right">
+                                     <span className="text-slate-400 text-sm block">Umsatz-relevant</span>
+                                     <span className="text-xl font-mono text-green-400">{formatDecimalTime(paidSeconds)} Std.</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -138,7 +217,7 @@
                         onMouseEnter={() => setIsSidebarExpanded(true)}
                         onMouseLeave={() => setIsSidebarExpanded(false)}
                         className={`h-full bg-slate-900 text-white shadow-xl flex flex-col transition-all duration-300 z-50
-                        ${forceWidgetMode ? 'w-full' : (isSidebarExpanded ? 'w-full md:w-52' : 'w-16 md:w-16')} flex-shrink-0 border-l border-slate-800 relative`}
+                        ${forceWidgetMode ? 'w-full' : (isSidebarExpanded ? 'w-full md:w-60' : 'w-16 md:w-16')} flex-shrink-0 border-l border-slate-800 relative`}
                     >
                         {/* Header */}
                         <div className="p-3 pt-4 flex justify-between items-center bg-slate-950 border-b border-slate-800">
@@ -147,7 +226,6 @@
                                 <button onClick={() => setForceWidgetMode(!forceWidgetMode)} className={`p-1.5 rounded-full hover:text-white ${forceWidgetMode ? 'text-blue-400 bg-slate-800' : 'text-slate-400 hover:bg-slate-800'}`} title={forceWidgetMode ? "Zurück zur Vollansicht" : "Widget Modus (nur Leiste)"}>
                                     <Layout size={18} />
                                 </button>
-                                {/* Menu Toggle nur sichtbar wenn NICHT im reinen Widget-Hover-Modus, da Hover jetzt automatisch steuert */}
                                 {!forceWidgetMode && (
                                     <button onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white">
                                         {isSidebarExpanded ? <XIcon size={18} /> : <Menu size={20} />}
@@ -159,7 +237,6 @@
                         <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar">
                             {projects.map(p => {
                                 const active = activeProjectId === p.id;
-                                // WICHTIG: Immer Links-Ausrichtung im Widget-Modus, damit es bei Mac-Breite gut aussieht
                                 const justifyClass = (!isSidebarExpanded && !forceWidgetMode) ? 'justify-center' : 'pl-2';
                                 
                                 return (
@@ -178,15 +255,34 @@
                                             </div>
                                         </div>
                                         
-                                        {/* Text wird eingeblendet beim Hovern (expanded) */}
                                         {isSidebarExpanded && (
                                             <div className="ml-3 min-w-0 flex-1 overflow-hidden">
-                                                <div className={`text-xs font-medium truncate ${active ? 'text-white' : 'text-slate-400'}`}>{p.name}</div>
+                                                <div className={`text-xs font-medium truncate flex items-center gap-1 ${active ? 'text-white' : 'text-slate-400'}`}>
+                                                    {p.name}
+                                                </div>
                                                 <div className={`font-mono text-sm leading-none ${active ? 'text-blue-400' : 'text-slate-600'}`}>{formatTime(p.time)}</div>
                                             </div>
                                         )}
-                                        {isSidebarExpanded && !p.isSystem && (
-                                            <button onClick={(e)=>handleDeleteProject(p.id, e)} className="p-1 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button>
+
+                                        {/* Actions: Bezahlt-Toggle & Löschen */}
+                                        {isSidebarExpanded && (
+                                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {/* Dollar Toggle */}
+                                                <button 
+                                                    onClick={(e) => togglePaidStatus(p.id, e)}
+                                                    className={`p-1 mr-1 rounded ${p.isPaid ? 'text-green-400 hover:text-green-300' : 'text-slate-600 hover:text-slate-400'}`}
+                                                    title={p.isPaid ? "Als unbezahlt markieren" : "Als bezahlt markieren"}
+                                                >
+                                                    <DollarSign size={14} />
+                                                </button>
+                                                
+                                                {/* Löschen */}
+                                                {!p.isSystem && (
+                                                    <button onClick={(e)=>handleDeleteProject(p.id, e)} className="p-1 text-slate-600 hover:text-red-400">
+                                                        <Trash2 size={14}/>
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 );
@@ -215,6 +311,20 @@
                                 <form onSubmit={handleAddProject} className="space-y-3">
                                     <input autoFocus maxLength={4} placeholder="Kürzel (z.B. WEB)" className="w-full p-2 border rounded uppercase font-mono" value={newProjectCode} onChange={e=>setNewProjectCode(e.target.value)} />
                                     <input placeholder="Name" className="w-full p-2 border rounded" value={newProjectName} onChange={e=>setNewProjectName(e.target.value)} />
+                                    
+                                    {/* Bezahlt Checkbox */}
+                                    <label className="flex items-center space-x-2 cursor-pointer p-2 border rounded hover:bg-gray-50">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={newProjectPaid} 
+                                            onChange={(e) => setNewProjectPaid(e.target.checked)}
+                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                        />
+                                        <div className="flex items-center text-sm text-gray-700">
+                                            <DollarSign size={16} className="mr-1 text-green-600"/> Bezahltes Projekt?
+                                        </div>
+                                    </label>
+                                    
                                     <button type="submit" disabled={!newProjectCode||!newProjectName} className="w-full bg-slate-900 text-white py-2 rounded">Speichern</button>
                                 </form>
                             </div>
