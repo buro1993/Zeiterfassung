@@ -5,45 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Zeiterfassung Widget</title>
     
-    <!-- PWA Settings für "Als App installieren" -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0f172a">
     
-    <!-- Manifest als Data-URI, damit der Browser es lokal als App erkennt -->
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Zeiterfassung%20Widget%22%2C%22short_name%22%3A%22Zeit%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f9fafb%22%2C%22theme_color%22%3A%22%230f172a%22%7D">
 
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel für JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
-        /* Custom Scrollbar für die Sidebar */
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: rgba(30, 41, 59, 0.5);
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.4);
-        }
-        
-        html, body, #root {
-            height: 100%;
-            margin: 0;
-            overflow: hidden; /* Scrollbars im Hauptfenster vermeiden */
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(30, 41, 59, 0.5); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.4); }
+        html, body, #root { height: 100%; margin: 0; overflow: hidden; }
     </style>
 </head>
 <body class="bg-transparent font-sans select-none">
@@ -52,7 +30,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- ICONS ---
         const IconBase = ({ size = 24, className = "", children }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
         );
@@ -69,10 +46,9 @@
         const Briefcase = (props) => <IconBase {...props}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></IconBase>;
         const Target = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></IconBase>;
         const Globe = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></IconBase>;
+        const Pin = (props) => <IconBase {...props}><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></IconBase>;
 
-        // --- MAIN COMPONENT ---
         const TimeTracker = () => {
-            // --- State ---
             const [projects, setProjects] = useState(() => {
                 const saved = localStorage.getItem('timeTrackerProjects_v2');
                 return saved ? JSON.parse(saved) : [
@@ -83,82 +59,43 @@
                     { id: 5, code: 'KDN', name: 'Kunden Beratung',    color: 'bg-green-500', time: 0 },
                 ];
             });
-
             const [activeProjectId, setActiveProjectId] = useState(null);
-            // Default expanded, aber im Widget Mode kann man es einklappen
             const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
             const [showAddModal, setShowAddModal] = useState(false);
-            
+            const [showPinInfo, setShowPinInfo] = useState(false);
             const [newProjectCode, setNewProjectCode] = useState('');
             const [newProjectName, setNewProjectName] = useState('');
-
             const timerRef = useRef(null);
 
-            // --- Effects ---
-            useEffect(() => {
-                localStorage.setItem('timeTrackerProjects_v2', JSON.stringify(projects));
-            }, [projects]);
-
+            useEffect(() => { localStorage.setItem('timeTrackerProjects_v2', JSON.stringify(projects)); }, [projects]);
             useEffect(() => {
                 if (activeProjectId) {
                     timerRef.current = setInterval(() => {
-                        setProjects(prevProjects => 
-                            prevProjects.map(p => 
-                                p.id === activeProjectId ? { ...p, time: p.time + 1 } : p
-                            )
-                        );
+                        setProjects(p => p.map(x => x.id === activeProjectId ? { ...x, time: x.time + 1 } : x));
                     }, 1000);
-                } else {
-                    clearInterval(timerRef.current);
-                }
+                } else { clearInterval(timerRef.current); }
                 return () => clearInterval(timerRef.current);
             }, [activeProjectId]);
 
-            // --- Helpers ---
-            const formatTime = (seconds) => {
-                const h = Math.floor(seconds / 3600);
-                const m = Math.floor((seconds % 3600) / 60);
-                const s = seconds % 60;
-                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            };
-
-            const formatDecimalTime = (seconds) => {
-                return (seconds / 3600).toFixed(2).replace('.', ',');
-            };
-
-            const toggleTimer = (id) => {
-                if (activeProjectId === id) {
-                    setActiveProjectId(null);
-                } else {
-                    setActiveProjectId(id);
-                }
-            };
-
+            const formatTime = (s) => new Date(s * 1000).toISOString().substr(11, 8);
+            const formatDecimalTime = (s) => (s / 3600).toFixed(2).replace('.', ',');
+            const toggleTimer = (id) => setActiveProjectId(activeProjectId === id ? null : id);
+            
             const handleAddProject = (e) => {
                 e.preventDefault();
                 if (!newProjectCode || !newProjectName) return;
-
                 const colors = ['bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
-                const randomColor = colors[Math.floor(Math.random() * colors.length)];
-                const nextId = projects.length > 0 ? Math.max(...projects.map(p => p.id)) + 1 : 1;
-
-                const newProject = {
-                    id: nextId,
-                    code: newProjectCode.toUpperCase().slice(0, 4),
-                    name: newProjectName,
-                    color: randomColor,
-                    time: 0
-                };
-
-                setProjects([...projects, newProject]);
-                setNewProjectCode('');
-                setNewProjectName('');
-                setShowAddModal(false);
+                const newId = projects.length > 0 ? Math.max(...projects.map(p => p.id)) + 1 : 1;
+                setProjects([...projects, {
+                    id: newId, code: newProjectCode.toUpperCase().slice(0, 4), name: newProjectName,
+                    color: colors[Math.floor(Math.random() * colors.length)], time: 0
+                }]);
+                setNewProjectCode(''); setNewProjectName(''); setShowAddModal(false);
             };
 
             const handleDeleteProject = (id, e) => {
                 e.stopPropagation();
-                if (confirm('Projekt wirklich löschen?')) {
+                if (confirm('Löschen?')) {
                     if (activeProjectId === id) setActiveProjectId(null);
                     setProjects(projects.filter(p => p.id !== id));
                 }
@@ -166,182 +103,121 @@
 
             const exportCSV = () => {
                 const today = new Date().toLocaleDateString('de-DE');
-                let csvContent = "data:text/csv;charset=utf-8,Datum;ID;Kürzel;Projekt;Zeit (Format);Zeit (Industrie Std.);Sekunden\n";
-                
-                projects.forEach(p => {
-                    if (p.time > 0) {
-                        const row = [
-                            today,
-                            p.id,
-                            p.code,
-                            p.name,
-                            formatTime(p.time),
-                            formatDecimalTime(p.time),
-                            p.time
-                        ];
-                        csvContent += row.join(";") + "\n";
-                    }
-                });
-
-                const encodedUri = encodeURI(csvContent);
+                let csv = "data:text/csv;charset=utf-8,Datum;ID;Kürzel;Projekt;Zeit;IndustrieStd;Sekunden\n";
+                projects.forEach(p => { if (p.time > 0) csv += `${today};${p.id};${p.code};${p.name};${formatTime(p.time)};${formatDecimalTime(p.time)};${p.time}\n`; });
                 const link = document.createElement("a");
-                link.setAttribute("href", encodedUri);
-                const dateStr = new Date().toISOString().slice(0,10);
-                link.setAttribute("download", `zeiterfassung_${dateStr}.csv`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                link.setAttribute("href", encodeURI(csv));
+                link.setAttribute("download", `zeit_${new Date().toISOString().slice(0,10)}.csv`);
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
             };
 
-            // --- Render ---
             return (
                 <div className="h-full flex bg-gray-50">
-                    {/* Main Content Area - Verschwindet auf kleinen Bildschirmen (hidden on mobile/narrow windows) */}
-                    <div className="hidden md:flex flex-1 p-8 flex-col justify-center max-w-4xl mx-auto transition-opacity duration-300">
-                        <h1 className="text-4xl font-bold mb-6 text-gray-900">Mein Arbeitstag</h1>
-                        <p className="mb-8 text-lg text-gray-600">
-                            Ziehe dieses Fenster schmaler, um nur die Seitenleiste zu sehen.
-                        </p>
-                        
-                        <div className="grid grid-cols-1 gap-6 w-full">
-                            <div className={`p-6 rounded-xl shadow-sm border transition-colors ${activeProjectId ? 'bg-blue-50 border-blue-100' : 'bg-white border-gray-100'}`}>
-                                <h2 className="font-semibold text-xl mb-2 flex items-center gap-2">
-                                    {activeProjectId ? <Clock className="text-blue-500" /> : <Clock className="text-gray-400" />}
-                                    Aktueller Status
+                    {/* Main Content (verschwindet wenn schmal) */}
+                    <div className="hidden md:flex flex-1 p-8 flex-col justify-center max-w-4xl mx-auto">
+                        <h1 className="text-3xl font-bold mb-4 text-gray-900">Arbeitstag</h1>
+                        <p className="mb-8 text-gray-600">Fenster schmal ziehen für Widget-Modus.</p>
+                        <div className="grid gap-4">
+                            <div className={`p-4 rounded-xl border ${activeProjectId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
+                                <h2 className="font-semibold mb-1 flex items-center gap-2">
+                                    <Clock size={20} className={activeProjectId ? "text-blue-500" : "text-gray-400"} /> Status
                                 </h2>
-                                <div className="text-2xl font-bold text-gray-800 mt-2">
-                                    {activeProjectId 
-                                        ? projects.find(p => p.id === activeProjectId)?.name 
-                                        : "Inaktiv"}
-                                </div>
-                                {activeProjectId && (
-                                    <div className="text-blue-600 font-mono mt-1 animate-pulse">
-                                        Zeiterfassung läuft...
-                                    </div>
-                                )}
+                                <div className="text-2xl font-bold">{activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Inaktiv"}</div>
                             </div>
-
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <h2 className="font-semibold text-xl mb-2">Gesamtzeit Heute</h2>
-                                <div className="text-4xl font-mono text-gray-700 mt-2">
-                                    {formatTime(projects.reduce((acc, curr) => acc + curr.time, 0))}
-                                </div>
-                                <div className="text-sm text-gray-400 mt-1">inklusive Pausen</div>
+                            <div className="bg-white p-4 rounded-xl border border-gray-200">
+                                <h2 className="font-semibold mb-1">Gesamtzeit</h2>
+                                <div className="text-3xl font-mono text-gray-700">{formatTime(projects.reduce((a, c) => a + c.time, 0))}</div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Sidebar - Passt sich jetzt der vollen Breite an, wenn das Fenster schmal ist */}
-                    <div className={`h-full bg-slate-900 text-white shadow-2xl flex flex-col transition-all duration-300 z-50
-                        ${isSidebarExpanded ? 'w-full md:w-80' : 'w-20 md:w-24'} flex-shrink-0 relative border-l border-slate-800`}
+                    {/* Sidebar: Jetzt schmaler (w-64 statt w-80) */}
+                    <div className={`h-full bg-slate-900 text-white shadow-xl flex flex-col transition-all duration-300 z-50
+                        ${isSidebarExpanded ? 'w-full md:w-64' : 'w-20 md:w-20'} flex-shrink-0 border-l border-slate-800 relative`}
                     >
-                        {/* Header */}
-                        <div className="p-4 flex justify-between items-center border-b border-slate-700 bg-slate-950">
-                            {isSidebarExpanded && <span className="font-bold text-lg tracking-wide text-slate-100 truncate">Workflow</span>}
-                            <button onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} className="p-2 hover:bg-slate-800 rounded-full transition-colors mx-auto text-slate-400 hover:text-white">
-                                {isSidebarExpanded ? <XIcon size={20} /> : <Menu size={24} />}
+                        <div className="p-3 flex justify-between items-center bg-slate-950 border-b border-slate-800">
+                            {isSidebarExpanded && <span className="font-bold tracking-wide pl-2">Zeiterfassung</span>}
+                            <button onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white mx-auto">
+                                {isSidebarExpanded ? <XIcon size={18} /> : <Menu size={20} />}
                             </button>
                         </div>
 
-                        {/* List */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-                            {projects.map((project) => {
-                                const isActive = activeProjectId === project.id;
-                                const isPause = project.code === 'P'; 
-                                
+                        <div className="flex-1 overflow-y-auto p-3 space-y-4 custom-scrollbar">
+                            {projects.map(p => {
+                                const active = activeProjectId === p.id;
                                 return (
-                                    <div key={project.id} className={`relative group flex items-center transition-all cursor-pointer select-none ${isSidebarExpanded ? 'justify-start' : 'justify-center'}`} onClick={() => toggleTimer(project.id)}>
-                                        <div className={`relative flex flex-col items-center justify-center rounded-full shadow-lg transition-all duration-300 border-2 ${isActive ? `scale-110 ring-4 ring-opacity-30 border-transparent ${isPause ? 'ring-gray-400' : 'ring-blue-400'}` : 'hover:scale-105 border-slate-700 hover:border-slate-500'} ${project.color} w-16 h-16 flex-shrink-0`}>
-                                            {isActive && <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${project.color}`}></span>}
-                                            
-                                            {project.code === 'P' ? (
-                                                <Coffee size={24} className="mb-1 opacity-90" />
-                                            ) : project.code === 'OFF' ? (
-                                                <Briefcase size={24} className="mb-1 opacity-90" />
-                                            ) : project.code === 'AKQ' ? (
-                                                <Target size={24} className="mb-1 opacity-90" />
-                                            ) : (project.code === 'DEV' || project.code === 'WEB') ? (
-                                                <Globe size={24} className="mb-1 opacity-90" />
-                                            ) : (
-                                                <>
-                                                    <span className="text-[10px] font-mono opacity-60 leading-none mb-1">#{project.id}</span>
-                                                    <span className="font-bold text-sm tracking-tighter">{project.code}</span>
-                                                </>
-                                            )}
-                                            
-                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
-                                                {isActive ? <Pause size={20} className="fill-current" /> : <Play size={20} className="fill-current" />}
+                                    <div key={p.id} className={`group flex items-center cursor-pointer select-none ${isSidebarExpanded ? '' : 'justify-center'}`} onClick={() => toggleTimer(p.id)}>
+                                        <div className={`relative flex flex-col items-center justify-center rounded-full shadow-lg transition-all duration-200 border-2 
+                                            ${active ? `scale-110 ring-2 ring-opacity-50 border-transparent ${p.code === 'P' ? 'ring-gray-400' : 'ring-blue-400'}` : 'hover:scale-105 border-slate-700'} 
+                                            ${p.color} w-14 h-14 flex-shrink-0`}>
+                                            {active && <span className={`absolute inset-0 rounded-full opacity-50 animate-ping ${p.color}`}></span>}
+                                            {p.code === 'P' ? <Coffee size={20} className="mb-0.5 opacity-90"/> : 
+                                             p.code === 'OFF' ? <Briefcase size={20} className="mb-0.5 opacity-90"/> :
+                                             p.code === 'AKQ' ? <Target size={20} className="mb-0.5 opacity-90"/> :
+                                             (p.code === 'DEV' || p.code === 'WEB') ? <Globe size={20} className="mb-0.5 opacity-90"/> :
+                                             <><span className="text-[9px] opacity-60 leading-none">#{p.id}</span><span className="font-bold text-xs">{p.code}</span></>}
+                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-full">
+                                                {active ? <Pause size={16} fill="white"/> : <Play size={16} fill="white"/>}
                                             </div>
                                         </div>
-
                                         {isSidebarExpanded && (
-                                            <div className="ml-4 flex-1 min-w-0">
-                                                <h3 className={`font-medium truncate ${isActive ? 'text-white' : 'text-slate-400'}`}>{project.name}</h3>
-                                                <div className={`text-xl font-mono tabular-nums ${isActive ? (isPause ? 'text-gray-300' : 'text-blue-400 font-bold') : 'text-slate-500'}`}>{formatTime(project.time)}</div>
+                                            <div className="ml-3 min-w-0 flex-1">
+                                                <div className={`text-sm font-medium truncate ${active ? 'text-white' : 'text-slate-400'}`}>{p.name}</div>
+                                                <div className={`font-mono text-lg leading-none ${active ? 'text-blue-400' : 'text-slate-600'}`}>{formatTime(p.time)}</div>
                                             </div>
                                         )}
-
-                                        {isSidebarExpanded && !project.isSystem && (
-                                            <button onClick={(e) => handleDeleteProject(project.id, e)} className="opacity-0 group-hover:opacity-100 p-2 text-slate-600 hover:text-red-400 transition-opacity" title="Löschen">
-                                                <Trash2 size={16} />
-                                            </button>
-                                        )}
-
-                                        {!isSidebarExpanded && (
-                                            <div className="absolute right-20 bg-slate-800 text-white px-3 py-2 rounded shadow-xl text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 border border-slate-700">
-                                                <div className="font-bold text-blue-100">{project.name}</div>
-                                                <div className="font-mono text-xs text-slate-400">{formatTime(project.time)}</div>
-                                            </div>
+                                        {isSidebarExpanded && !p.isSystem && (
+                                            <button onClick={(e)=>handleDeleteProject(p.id, e)} className="p-2 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button>
                                         )}
                                     </div>
                                 );
                             })}
-
-                            <div className="flex justify-center pt-4 border-t border-slate-800 mt-4">
-                                <button onClick={() => setShowAddModal(true)} className={`flex items-center justify-center rounded-full border-2 border-dashed border-slate-700 text-slate-500 hover:text-white hover:border-slate-500 transition-all ${isSidebarExpanded ? 'w-full py-3 hover:bg-slate-800' : 'w-12 h-12'}`}>
-                                    <Plus size={24} />
-                                    {isSidebarExpanded && <span className="ml-2 font-medium">Projekt hinzufügen</span>}
+                            <div className="pt-2 flex justify-center">
+                                <button onClick={() => setShowAddModal(true)} className={`flex items-center justify-center rounded-full border border-dashed border-slate-700 text-slate-500 hover:text-white hover:border-slate-500 transition-all ${isSidebarExpanded ? 'w-full py-2 hover:bg-slate-800' : 'w-10 h-10'}`}>
+                                    <Plus size={20} />
                                 </button>
                             </div>
                         </div>
 
-                        {/* Footer */}
-                        <div className="p-4 bg-slate-950">
-                            {isSidebarExpanded ? (
-                                <button onClick={exportCSV} className="w-full flex items-center justify-center space-x-2 bg-green-700 hover:bg-green-600 text-white py-3 rounded-lg transition-colors font-medium shadow-lg shadow-green-900/20">
-                                    <Download size={18} />
-                                    <span>Excel Export</span>
-                                </button>
-                            ) : (
-                                <button onClick={exportCSV} className="w-full flex justify-center text-slate-400 hover:text-green-500" title="Export für Excel">
-                                    <Download size={24} />
-                                </button>
-                            )}
+                        <div className="p-3 bg-slate-950 flex flex-col gap-2 border-t border-slate-800">
+                            <button onClick={exportCSV} className={`flex items-center justify-center space-x-2 bg-green-800 hover:bg-green-700 text-white rounded-lg transition-colors ${isSidebarExpanded ? 'py-2 px-4' : 'p-2'}`} title="Excel Export">
+                                <Download size={18} /> {isSidebarExpanded && <span className="text-sm font-medium">Export</span>}
+                            </button>
+                            <button onClick={() => setShowPinInfo(true)} className="flex items-center justify-center text-slate-600 hover:text-blue-400 py-1 text-xs gap-1" title="Immer im Vordergrund">
+                                <Pin size={14} /> {isSidebarExpanded && "Im Vordergrund?"}
+                            </button>
                         </div>
                     </div>
 
                     {showAddModal && (
-                        <div className="fixed inset-0 bg-slate-900 bg-opacity-80 flex items-center justify-center z-[60] backdrop-blur-sm">
-                            <div className="bg-white rounded-xl shadow-2xl p-6 w-96 max-w-full m-4 border-t-4 border-blue-500">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-xl font-bold text-gray-800">Neues Projekt</h3>
-                                    <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><XIcon size={24} /></button>
-                                </div>
-                                <form onSubmit={handleAddProject} className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Kürzel (z.B. WEB)</label>
-                                        <input autoFocus type="text" maxLength={4} placeholder="CODE" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none uppercase font-mono tracking-wider" value={newProjectCode} onChange={(e) => setNewProjectCode(e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Projekt Name</label>
-                                        <input type="text" placeholder="Kundenname / Aufgabe" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} />
-                                    </div>
-                                    <div className="pt-4">
-                                        <button type="submit" disabled={!newProjectCode || !newProjectName} className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg">
-                                            <Save size={18} /> Speichern
-                                        </button>
-                                    </div>
+                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] backdrop-blur-sm">
+                            <div className="bg-white rounded-xl p-5 w-80 shadow-2xl">
+                                <div className="flex justify-between mb-4"><h3 className="font-bold">Neues Projekt</h3><button onClick={()=>setShowAddModal(false)}><XIcon/></button></div>
+                                <form onSubmit={handleAddProject} className="space-y-3">
+                                    <input autoFocus maxLength={4} placeholder="Kürzel (z.B. WEB)" className="w-full p-2 border rounded uppercase font-mono" value={newProjectCode} onChange={e=>setNewProjectCode(e.target.value)} />
+                                    <input placeholder="Name" className="w-full p-2 border rounded" value={newProjectName} onChange={e=>setNewProjectName(e.target.value)} />
+                                    <button type="submit" disabled={!newProjectCode||!newProjectName} className="w-full bg-slate-900 text-white py-2 rounded">Speichern</button>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {showPinInfo && (
+                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-xl p-6 w-96 max-w-full shadow-2xl relative">
+                                <button onClick={()=>setShowPinInfo(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black"><XIcon/></button>
+                                <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Pin size={20} className="text-blue-600"/>Immer im Vordergrund</h3>
+                                <p className="text-sm text-gray-600 mb-4">
+                                    Windows erlaubt Apps nicht, sich selbst "immer oben" zu halten. Aber es gibt einen offiziellen Trick von Microsoft:
+                                </p>
+                                <div className="bg-slate-100 p-4 rounded-lg mb-4 text-sm">
+                                    <ol className="list-decimal pl-4 space-y-2">
+                                        <li>Installiere die kostenlosen <strong>Microsoft PowerToys</strong> (aus dem Store).</li>
+                                        <li>Klicke auf dieses Fenster.</li>
+                                        <li>Drücke auf der Tastatur: <br/><strong className="text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200 mt-1 inline-block">Windows + Strg + T</strong></li>
+                                    </ol>
+                                </div>
+                                <p className="text-xs text-gray-500">Das Fenster bekommt dann einen farbigen Rahmen und bleibt über allen anderen Fenstern kleben.</p>
                             </div>
                         </div>
                     )}
