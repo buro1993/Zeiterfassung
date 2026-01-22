@@ -18,7 +18,6 @@
 
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 0px; background: transparent; }
-        /* Erlaubt dem Fenster jede Größe */
         html, body, #root { height: 100%; margin: 0; overflow: hidden; min-width: 0 !important; width: 100%; }
         body { -webkit-user-select: none; user-select: none; }
     </style>
@@ -27,13 +26,14 @@
     <div id="root" class="h-full w-full"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // Icons
         const IconBase = ({ size = 24, className = "", children }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
         );
         const Plus = (props) => <IconBase {...props}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></IconBase>;
+        const Minus = (props) => <IconBase {...props}><line x1="5" y1="12" x2="19" y2="12"></line></IconBase>;
         const Trash2 = (props) => <IconBase {...props}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></IconBase>;
         const Download = (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></IconBase>;
         const Play = (props) => <IconBase {...props}><polygon points="5 3 19 12 5 21 5 3"></polygon></IconBase>;
@@ -49,51 +49,114 @@
         const Pin = (props) => <IconBase {...props}><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></IconBase>;
         const Layout = (props) => <IconBase {...props}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></IconBase>;
         const DollarSign = (props) => <IconBase {...props}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></IconBase>;
+        const CalendarIcon = (props) => <IconBase {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></IconBase>;
+        const ChevronLeft = (props) => <IconBase {...props}><polyline points="15 18 9 12 15 6"></polyline></IconBase>;
+        const ChevronRight = (props) => <IconBase {...props}><polyline points="9 18 15 12 9 6"></polyline></IconBase>;
+
+        // --- Helpers für Datum ---
+        const getISODate = (date) => date.toISOString().slice(0, 10);
+        const isSameDay = (d1, d2) => d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
 
         const TimeTracker = () => {
-            const [projects, setProjects] = useState(() => {
-                const saved = localStorage.getItem('timeTrackerProjects_v2');
-                const initial = saved ? JSON.parse(saved) : [
-                    { id: 1, code: 'OFF', name: 'Büroarbeit / Admin', color: 'bg-slate-600', time: 0, isSystem: true, isPaid: false },
-                    { id: 2, code: 'AKQ', name: 'Akquise',            color: 'bg-orange-600', time: 0, isSystem: true, isPaid: false },
-                    { id: 3, code: 'P',   name: 'Pause',              color: 'bg-gray-400', time: 0, isSystem: true, isPaid: false },
-                    { id: 4, code: 'DEV', name: 'Website Projekt A',  color: 'bg-blue-500', time: 0, isPaid: true },
-                    { id: 5, code: 'KDN', name: 'Kunden Beratung',    color: 'bg-green-500', time: 0, isPaid: true },
-                ];
-                return initial.map(p => ({...p, isPaid: p.isPaid !== undefined ? p.isPaid : (p.code !== 'P' && p.code !== 'OFF' && p.code !== 'AKQ')}));
+            // --- Global State ---
+            const [history, setHistory] = useState(() => {
+                const saved = localStorage.getItem('timeTrackerHistory');
+                return saved ? JSON.parse(saved) : {};
             });
+
+            const [selectedDate, setSelectedDate] = useState(new Date());
+            
+            const defaultProjects = [
+                { id: 1, code: 'OFF', name: 'Büroarbeit / Admin', color: 'bg-slate-600', time: 0, isSystem: true, isPaid: false },
+                { id: 2, code: 'AKQ', name: 'Akquise',            color: 'bg-orange-600', time: 0, isSystem: true, isPaid: false },
+                { id: 3, code: 'P',   name: 'Pause',              color: 'bg-gray-400', time: 0, isSystem: true, isPaid: false },
+                { id: 4, code: 'DEV', name: 'Website Projekt A',  color: 'bg-blue-500', time: 0, isPaid: true },
+                { id: 5, code: 'KDN', name: 'Kunden Beratung',    color: 'bg-green-500', time: 0, isPaid: true },
+            ];
+
+            const [projects, setProjects] = useState([]);
+
+            useEffect(() => {
+                const dateKey = getISODate(selectedDate);
+                if (history[dateKey]) {
+                    setProjects(history[dateKey]);
+                } else {
+                    const keys = Object.keys(history).sort();
+                    let template = defaultProjects;
+                    if (keys.length > 0) {
+                        const lastKey = keys[keys.length - 1];
+                        template = history[lastKey].map(p => ({ ...p, time: 0 }));
+                    }
+                    setProjects(template);
+                }
+            }, [selectedDate]);
+
+            useEffect(() => {
+                const dateKey = getISODate(selectedDate);
+                setHistory(prev => {
+                    const newHistory = { ...prev, [dateKey]: projects };
+                    localStorage.setItem('timeTrackerHistory', JSON.stringify(newHistory));
+                    return newHistory;
+                });
+            }, [projects]);
+
+            // Timer Logic
             const [activeProjectId, setActiveProjectId] = useState(null);
+            const timerRef = useRef(null);
+
+            useEffect(() => {
+                const isToday = isSameDay(selectedDate, new Date());
+                if (activeProjectId && isToday) {
+                    timerRef.current = setInterval(() => {
+                        setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, time: p.time + 1 } : p));
+                    }, 1000);
+                } else {
+                    clearInterval(timerRef.current);
+                    if (!isToday && activeProjectId) setActiveProjectId(null);
+                }
+                return () => clearInterval(timerRef.current);
+            }, [activeProjectId, selectedDate]);
+
+            // UI States
             const [windowWidth, setWindowWidth] = useState(window.innerWidth);
             const [forceWidgetMode, setForceWidgetMode] = useState(false);
             const [isHoveringSidebar, setIsHoveringSidebar] = useState(false);
-            
             const [showAddModal, setShowAddModal] = useState(false);
             const [showPinInfo, setShowPinInfo] = useState(false);
+            const [showCalendarModal, setShowCalendarModal] = useState(false); // NEU: Calendar Modal State
+            
             const [newProjectCode, setNewProjectCode] = useState('');
             const [newProjectName, setNewProjectName] = useState('');
             const [newProjectPaid, setNewProjectPaid] = useState(true);
-            const timerRef = useRef(null);
 
-            // Fenstergröße überwachen
+            // Calendar State
+            const [currentMonth, setCurrentMonth] = useState(new Date());
+
             useEffect(() => {
                 const handleResize = () => setWindowWidth(window.innerWidth);
                 window.addEventListener('resize', handleResize);
                 return () => window.removeEventListener('resize', handleResize);
             }, []);
 
-            useEffect(() => { localStorage.setItem('timeTrackerProjects_v2', JSON.stringify(projects)); }, [projects]);
-            useEffect(() => {
-                if (activeProjectId) {
-                    timerRef.current = setInterval(() => {
-                        setProjects(p => p.map(x => x.id === activeProjectId ? { ...x, time: x.time + 1 } : x));
-                    }, 1000);
-                } else { clearInterval(timerRef.current); }
-                return () => clearInterval(timerRef.current);
-            }, [activeProjectId]);
-
-            const formatTime = (s) => new Date(s * 1000).toISOString().substr(11, 8);
+            // --- Actions ---
+            const formatTime = (s) => {
+                const h = Math.floor(Math.abs(s) / 3600);
+                const m = Math.floor((Math.abs(s) % 3600) / 60);
+                const prefix = s < 0 ? "-" : "";
+                return `${prefix}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+            };
             const formatDecimalTime = (s) => (s / 3600).toFixed(2).replace('.', ',');
-            const toggleTimer = (id) => setActiveProjectId(activeProjectId === id ? null : id);
+            
+            const toggleTimer = (id) => {
+                if (!isSameDay(selectedDate, new Date())) {
+                    if(confirm("Du bist nicht im heutigen Datum. Zum heutigen Tag springen und Timer starten?")) {
+                        setSelectedDate(new Date());
+                        setTimeout(() => setActiveProjectId(id), 100);
+                    }
+                    return;
+                }
+                setActiveProjectId(activeProjectId === id ? null : id);
+            };
             
             const handleAddProject = (e) => {
                 e.preventDefault();
@@ -125,99 +188,187 @@
                 setProjects(projects.map(p => p.id === id ? { ...p, isPaid: !p.isPaid } : p));
             };
 
+            const addManualTime = (id, minutes) => {
+                setProjects(prev => prev.map(p => 
+                    p.id === id ? { ...p, time: Math.max(0, p.time + (minutes * 60)) } : p 
+                ));
+            };
+
             const exportCSV = () => {
-                const today = new Date().toLocaleDateString('de-DE');
+                const dateStr = selectedDate.toLocaleDateString('de-DE');
                 let csv = "data:text/csv;charset=utf-8,Datum;ID;Kürzel;Projekt;Bezahlt;Zeit;IndustrieStd;Sekunden\n";
                 projects.forEach(p => { 
-                    if (p.time > 0) csv += `${today};${p.id};${p.code};${p.name};${p.isPaid ? 'Ja' : 'Nein'};${formatTime(p.time)};${formatDecimalTime(p.time)};${p.time}\n`; 
+                    if (p.time > 0) csv += `${dateStr};${p.id};${p.code};${p.name};${p.isPaid ? 'Ja' : 'Nein'};${formatTime(p.time)};${formatDecimalTime(p.time)};${p.time}\n`; 
                 });
                 const link = document.createElement("a");
                 link.setAttribute("href", encodeURI(csv));
-                link.setAttribute("download", `zeit_${new Date().toISOString().slice(0,10)}.csv`);
+                link.setAttribute("download", `zeit_${getISODate(selectedDate)}.csv`);
                 document.body.appendChild(link); link.click(); document.body.removeChild(link);
             };
 
+            // Stats
             const totalSeconds = projects.reduce((acc, curr) => acc + curr.time, 0);
             const paidSeconds = projects.filter(p => p.isPaid).reduce((acc, curr) => acc + curr.time, 0);
             const unpaidSeconds = totalSeconds - paidSeconds;
             const paidPercentage = totalSeconds > 0 ? (paidSeconds / totalSeconds) * 100 : 0;
 
-            // LOGIK FÜR RESPONSIVENES DESIGN
-            // Entscheiden, ob das Dashboard (großer Bereich) angezeigt wird
             const showDashboard = !forceWidgetMode && windowWidth >= 800;
-            
-            // Entscheiden, wie breit die Sidebar ist
-            // Wenn Dashboard versteckt ist -> Sidebar ist IMMER 100% breit (w-full)
-            // Wenn Dashboard da ist -> Sidebar ist fixiert (w-60 oder w-16)
             let sidebarWidthClass = 'w-full';
-            if (showDashboard) {
-                sidebarWidthClass = isHoveringSidebar ? 'w-60' : 'w-16';
-            }
-
-            // Soll die Sidebar detaillierten Text anzeigen?
-            // Ja, wenn:
-            // 1. Wir hovern (egal wie groß das Fenster ist)
-            // 2. ODER: Das Dashboard ist weg UND das Fenster ist breit genug (> 200px), dass Text reinpasst
+            if (showDashboard) sidebarWidthClass = isHoveringSidebar ? 'w-60' : 'w-16';
             const showSidebarText = isHoveringSidebar || (!showDashboard && windowWidth > 200);
-
-            // Icon Ausrichtung: Zentriert wenn Text weg ist und Dashboard da ist
             const iconJustifyClass = (!showSidebarText && showDashboard) ? 'justify-center' : 'pl-2';
 
+            // Calendar Logic
+            const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+            const getFirstDayOfMonth = (date) => {
+                let day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+                return day === 0 ? 6 : day - 1;
+            };
+
+            const renderCalendar = () => {
+                const days = getDaysInMonth(currentMonth);
+                const firstDay = getFirstDayOfMonth(currentMonth);
+                const calendarDays = [];
+                for (let i = 0; i < firstDay; i++) calendarDays.push(<div key={`empty-${i}`} className="h-8"></div>);
+                for (let day = 1; day <= days; day++) {
+                    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+                    const isSelected = isSameDay(date, selectedDate);
+                    const isToday = isSameDay(date, new Date());
+                    const dateKey = getISODate(date);
+                    const hasData = history[dateKey] && history[dateKey].some(p => p.time > 0);
+                    calendarDays.push(
+                        <button key={day} onClick={() => { setSelectedDate(date); setShowCalendarModal(false); }}
+                            className={`h-8 w-8 rounded-full flex items-center justify-center text-sm relative transition-all ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md' : 'hover:bg-slate-100 text-slate-700'} ${isToday && !isSelected ? 'border border-blue-400 text-blue-600 font-bold' : ''}`}>
+                            {day} {hasData && !isSelected && <span className="absolute bottom-1 w-1 h-1 bg-green-500 rounded-full"></span>}
+                        </button>
+                    );
+                }
+                return calendarDays;
+            };
+            const changeMonth = (delta) => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + delta, 1));
 
             return (
                 <div className="h-full w-full flex bg-gray-50 overflow-hidden">
-                    {/* --- MAIN CONTENT (DASHBOARD) --- 
-                        Wird komplett ausgeblendet (hidden), wenn kein Platz ist oder Widget-Mode aktiv ist. 
-                    */}
                     {showDashboard && (
-                        <div className="flex-1 p-8 flex flex-col justify-center max-w-4xl mx-auto transition-opacity duration-300">
-                            <h1 className="text-3xl font-bold mb-4 text-gray-900">Arbeitstag Übersicht</h1>
-                            <p className="mb-6 text-gray-600">Nutze den Widget-Button (oben rechts), um Platz zu sparen.</p>
+                        <div className="flex-1 p-8 flex flex-col max-w-5xl mx-auto transition-opacity duration-300 overflow-y-auto">
                             
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
-                                <div className={`p-6 rounded-xl border shadow-sm ${activeProjectId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
-                                    <h2 className="font-semibold mb-2 flex items-center gap-2 text-lg">
-                                        <Clock size={20} className={activeProjectId ? "text-blue-500" : "text-gray-400"} /> Aktueller Fokus
-                                    </h2>
-                                    <div className="text-2xl font-bold text-gray-800 mb-1">
-                                        {activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Inaktiv"}
-                                    </div>
-                                    {activeProjectId && (
-                                        <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">
-                                            Tracking läuft
-                                        </span>
-                                    )}
+                            {/* --- HEADER --- */}
+                            <div className="flex justify-between items-center mb-6">
+                                <div className="flex items-center gap-3">
+                                    <h1 className="text-3xl font-bold text-gray-900">
+                                        {isSameDay(selectedDate, new Date()) ? "Heute" : selectedDate.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                    </h1>
+                                    <button 
+                                        onClick={() => setShowCalendarModal(true)}
+                                        className="p-2 bg-white border border-gray-200 rounded-full hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition-colors shadow-sm"
+                                        title="Datum wählen"
+                                    >
+                                        <CalendarIcon size={20} />
+                                    </button>
                                 </div>
+                                <p className="text-gray-500 text-sm hidden lg:block">Nutze den Widget-Button (oben rechts), um Platz zu sparen.</p>
+                            </div>
+                            
+                            <div className="flex flex-col gap-6 w-full pb-8">
+                                
+                                {/* --- TOP ROW: ACTIVE TIMER & PRODUCTIVITY --- */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    
+                                    {/* Active Status Card */}
+                                    <div className={`p-6 rounded-xl border shadow-sm transition-colors flex flex-col justify-center ${activeProjectId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
+                                        <h2 className="font-semibold mb-2 flex items-center gap-2 text-lg text-gray-700">
+                                            <Clock size={20} className={activeProjectId ? "text-blue-500" : "text-gray-400"} /> Aktueller Fokus
+                                        </h2>
+                                        <div className="text-2xl font-bold text-gray-900 mt-1 truncate">
+                                            {activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Kein Timer aktiv"}
+                                        </div>
+                                        {activeProjectId && (
+                                            <div className="mt-2">
+                                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">
+                                                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span> Läuft
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
 
-                                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
-                                    <h2 className="font-semibold mb-4 text-lg">Verteilung (Aktuell)</h2>
-                                    <div className="flex items-center gap-6">
+                                    {/* Productivity Chart Card */}
+                                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-6">
                                         <div className="relative w-24 h-24 rounded-full flex-shrink-0"
-                                             style={{ background: `conic-gradient(#22c55e ${paidPercentage}%, #94a3b8 ${paidPercentage}% 100%)` }}>
-                                             <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center shadow-inner">
-                                                 <span className="text-xs font-bold text-gray-500">{Math.round(paidPercentage)}%</span>
+                                             style={{ background: `conic-gradient(#22c55e ${paidPercentage}%, #e2e8f0 ${paidPercentage}% 100%)` }}>
+                                             <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center shadow-inner flex-col">
+                                                 <span className="text-xl font-bold text-gray-700">{Math.round(paidPercentage)}%</span>
+                                                 <span className="text-[9px] text-gray-400 uppercase tracking-wide">Bezahlt</span>
                                              </div>
                                         </div>
-                                        <div className="flex-1 space-y-3">
-                                            <div>
-                                                <div className="flex items-center gap-2 text-sm text-gray-600"><div className="w-3 h-3 rounded-full bg-green-500"></div>Bezahlt</div>
-                                                <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(paidSeconds)}</div>
+                                        <div className="flex-1 space-y-2">
+                                            <h3 className="font-semibold text-gray-700">Produktivität</h3>
+                                            <div className="flex justify-between text-sm items-center border-b border-gray-100 pb-1">
+                                                <span className="flex items-center gap-2 text-gray-600"><div className="w-2 h-2 rounded-full bg-green-500"></div>Bezahlt</span>
+                                                <span className="font-mono font-bold text-gray-800">{formatTime(paidSeconds)}</span>
                                             </div>
-                                            <div>
-                                                <div className="flex items-center gap-2 text-sm text-gray-600"><div className="w-3 h-3 rounded-full bg-slate-400"></div>Intern / Admin</div>
-                                                <div className="pl-5 text-lg font-mono font-bold text-gray-800">{formatTime(unpaidSeconds)}</div>
+                                            <div className="flex justify-between text-sm items-center">
+                                                <span className="flex items-center gap-2 text-gray-600"><div className="w-2 h-2 rounded-full bg-slate-300"></div>Intern</span>
+                                                <span className="font-mono font-bold text-gray-800">{formatTime(unpaidSeconds)}</span>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+
+                                {/* --- MIDDLE ROW: PROJECT LIST --- */}
+                                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-1 min-h-[300px]">
+                                    <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                                        <h2 className="font-semibold text-gray-700 flex items-center gap-2">
+                                            <Briefcase size={18} className="text-slate-400"/> Projektübersicht
+                                        </h2>
+                                        <span className="text-xs text-gray-400 bg-white px-2 py-1 border rounded">Zeitkorrektur</span>
+                                    </div>
+                                    <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                        {projects.map(p => (
+                                            <div key={p.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-3 h-3 rounded-full shadow-sm ${p.color}`}></div>
+                                                    <div>
+                                                        <div className="font-medium text-gray-900">{p.name}</div>
+                                                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                                                            <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px] tracking-wider">{p.code}</span>
+                                                            <span className={p.isPaid ? "text-green-600" : "text-slate-400"}>• {p.isPaid ? 'Bezahlt' : 'Intern'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="font-mono text-gray-700 font-bold bg-white border px-3 py-1.5 rounded min-w-[80px] text-center shadow-sm text-lg">
+                                                        {formatTime(p.time)}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            onClick={() => addManualTime(p.id, -15)} 
+                                                            className="w-8 h-8 rounded-full bg-white border border-red-200 text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors shadow-sm"
+                                                            title="-15 Min"
+                                                        >
+                                                            <Minus size={14} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => addManualTime(p.id, 15)} 
+                                                            className="w-8 h-8 rounded-full bg-white border border-blue-200 text-blue-500 hover:bg-blue-50 flex items-center justify-center transition-colors shadow-sm"
+                                                            title="+15 Min"
+                                                        >
+                                                            <Plus size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                                 
-                                <div className="lg:col-span-2 bg-slate-900 text-white p-4 rounded-xl shadow-lg flex justify-between items-center">
+                                {/* --- BOTTOM: FOOTER --- */}
+                                <div className="bg-slate-900 text-white p-5 rounded-xl shadow-lg flex justify-between items-center">
                                     <div>
-                                        <span className="text-slate-400 text-sm block">Gesamtzeit heute</span>
-                                        <span className="text-2xl font-mono font-bold tracking-wider">{formatTime(totalSeconds)}</span>
+                                        <span className="text-slate-400 text-xs uppercase tracking-widest block mb-1">Gesamtzeit</span>
+                                        <span className="text-3xl font-mono font-bold">{formatTime(totalSeconds)}</span>
                                     </div>
                                     <div className="text-right">
-                                         <span className="text-slate-400 text-sm block">Umsatz-relevant</span>
+                                         <span className="text-slate-400 text-xs uppercase tracking-widest block mb-1">Umsatz-relevant</span>
                                          <span className="text-xl font-mono text-green-400">{formatDecimalTime(paidSeconds)} Std.</span>
                                     </div>
                                 </div>
@@ -225,15 +376,12 @@
                         </div>
                     )}
 
-                    {/* --- SIDEBAR --- 
-                        Passt sich jetzt intelligent an. Wenn Dashboard weg ist, wird sie 'w-full'.
-                    */}
+                    {/* --- SIDEBAR (Unverändert) --- */}
                     <div 
                         onMouseEnter={() => setIsHoveringSidebar(true)}
                         onMouseLeave={() => setIsHoveringSidebar(false)}
                         className={`h-full bg-slate-900 text-white shadow-xl flex flex-col transition-all duration-300 z-50 flex-shrink-0 border-l border-slate-800 relative ${sidebarWidthClass}`}
                     >
-                        {/* Header */}
                         <div className="p-3 pt-4 flex justify-between items-center bg-slate-950 border-b border-slate-800">
                             {showSidebarText && <span className="font-bold tracking-wide pl-1 truncate text-sm">Zeit</span>}
                             <div className={`flex gap-1 ${(!showSidebarText) ? 'w-full justify-center' : ''}`}>
@@ -246,10 +394,9 @@
                         <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar">
                             {projects.map(p => {
                                 const active = activeProjectId === p.id;
-                                
+                                const justifyClass = (!showSidebarText && showDashboard) ? 'justify-center' : 'pl-2';
                                 return (
-                                    <div key={p.id} className={`group flex items-center cursor-pointer select-none ${iconJustifyClass}`} onClick={() => toggleTimer(p.id)}>
-                                        {/* Icon Bubble */}
+                                    <div key={p.id} className={`group flex items-center cursor-pointer select-none ${justifyClass}`} onClick={() => toggleTimer(p.id)}>
                                         <div className={`relative flex flex-col items-center justify-center rounded-full shadow-lg transition-all duration-200 border-2 
                                             ${active ? `scale-110 ring-2 ring-opacity-50 border-transparent ${p.code === 'P' ? 'ring-gray-400' : 'ring-blue-400'}` : 'hover:scale-105 border-slate-700'} 
                                             ${p.color} w-10 h-10 flex-shrink-0`}>
@@ -263,8 +410,6 @@
                                                 {active ? <Pause size={14} fill="white"/> : <Play size={14} fill="white"/>}
                                             </div>
                                         </div>
-                                        
-                                        {/* Text Info */}
                                         {showSidebarText && (
                                             <div className="ml-3 min-w-0 flex-1 overflow-hidden">
                                                 <div className={`text-xs font-medium truncate flex items-center gap-1 ${active ? 'text-white' : 'text-slate-400'}`}>
@@ -273,15 +418,9 @@
                                                 <div className={`font-mono text-sm leading-none ${active ? 'text-blue-400' : 'text-slate-600'}`}>{formatTime(p.time)}</div>
                                             </div>
                                         )}
-
-                                        {/* Actions */}
                                         {showSidebarText && (
                                             <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button 
-                                                    onClick={(e) => togglePaidStatus(p.id, e)}
-                                                    className={`p-1 mr-1 rounded ${p.isPaid ? 'text-green-400 hover:text-green-300' : 'text-slate-600 hover:text-slate-400'}`}
-                                                    title={p.isPaid ? "Als unbezahlt markieren" : "Als bezahlt markieren"}
-                                                >
+                                                <button onClick={(e) => togglePaidStatus(p.id, e)} className={`p-1 mr-1 rounded ${p.isPaid ? 'text-green-400 hover:text-green-300' : 'text-slate-600 hover:text-slate-400'}`}>
                                                     <DollarSign size={14} />
                                                 </button>
                                                 {!p.isSystem && (
@@ -294,7 +433,6 @@
                                     </div>
                                 );
                             })}
-                            
                             <div className={`pt-2 flex ${(!showSidebarText) ? 'justify-center' : 'pl-2'}`}>
                                 <button onClick={() => setShowAddModal(true)} className={`flex items-center justify-center rounded-full border border-dashed border-slate-700 text-slate-500 hover:text-white hover:border-slate-500 transition-all ${showSidebarText ? 'w-full py-1.5 hover:bg-slate-800' : 'w-10 h-10'}`}>
                                     <Plus size={16} />
@@ -319,20 +457,35 @@
                                 <form onSubmit={handleAddProject} className="space-y-3">
                                     <input autoFocus maxLength={4} placeholder="Kürzel (z.B. WEB)" className="w-full p-2 border rounded uppercase font-mono" value={newProjectCode} onChange={e=>setNewProjectCode(e.target.value)} />
                                     <input placeholder="Name" className="w-full p-2 border rounded" value={newProjectName} onChange={e=>setNewProjectName(e.target.value)} />
-                                    
                                     <label className="flex items-center space-x-2 cursor-pointer p-2 border rounded hover:bg-gray-50">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={newProjectPaid} 
-                                            onChange={(e) => setNewProjectPaid(e.target.checked)}
-                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                        />
-                                        <div className="flex items-center text-sm text-gray-700">
-                                            <DollarSign size={16} className="mr-1 text-green-600"/> Bezahltes Projekt?
-                                        </div>
+                                        <input type="checkbox" checked={newProjectPaid} onChange={(e) => setNewProjectPaid(e.target.checked)} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                                        <div className="flex items-center text-sm text-gray-700"><DollarSign size={16} className="mr-1 text-green-600"/> Bezahltes Projekt?</div>
                                     </label>
                                     <button type="submit" disabled={!newProjectCode||!newProjectName} className="w-full bg-slate-900 text-white py-2 rounded">Speichern</button>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {showCalendarModal && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-xl p-5 w-80 shadow-2xl relative border border-gray-200">
+                                <div className="flex justify-between items-center mb-4">
+                                    <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-slate-100 rounded"><ChevronLeft size={20}/></button>
+                                    <span className="font-bold text-gray-700 capitalize">
+                                        {currentMonth.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
+                                    </span>
+                                    <button onClick={() => changeMonth(1)} className="p-1 hover:bg-slate-100 rounded"><ChevronRight size={20}/></button>
+                                </div>
+                                <div className="grid grid-cols-7 gap-1 text-center mb-2 text-xs font-medium text-gray-400">
+                                    <div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div>
+                                </div>
+                                <div className="grid grid-cols-7 gap-1 justify-items-center">
+                                    {renderCalendar()}
+                                </div>
+                                <div className="mt-4 pt-3 border-t flex justify-center">
+                                    <button onClick={()=>setShowCalendarModal(false)} className="text-sm text-gray-500 hover:text-gray-800">Schließen</button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -342,9 +495,7 @@
                             <div className="bg-white rounded-xl p-6 w-96 max-w-full shadow-2xl relative">
                                 <button onClick={()=>setShowPinInfo(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black"><XIcon/></button>
                                 <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Pin size={20} className="text-blue-600"/>Immer im Vordergrund</h3>
-                                <p className="text-sm text-gray-600 mb-4">
-                                    Windows erlaubt Apps nicht, sich selbst "immer oben" zu halten. Aber es gibt einen offiziellen Trick von Microsoft:
-                                </p>
+                                <p className="text-sm text-gray-600 mb-4">Windows erlaubt Apps nicht, sich selbst "immer oben" zu halten. Aber es gibt einen offiziellen Trick von Microsoft:</p>
                                 <div className="bg-slate-100 p-4 rounded-lg mb-4 text-sm">
                                     <ol className="list-decimal pl-4 space-y-2">
                                         <li>Installiere die kostenlosen <strong>Microsoft PowerToys</strong> (aus dem Store).</li>
@@ -352,7 +503,6 @@
                                         <li>Drücke auf der Tastatur: <br/><strong className="text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200 mt-1 inline-block">Windows + Strg + T</strong></li>
                                     </ol>
                                 </div>
-                                <p className="text-xs text-gray-500">Das Fenster bekommt dann einen farbigen Rahmen und bleibt über allen anderen Fenstern kleben.</p>
                             </div>
                         </div>
                     )}
