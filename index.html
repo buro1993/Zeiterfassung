@@ -63,7 +63,8 @@
                 ];
             });
             const [activeProjectId, setActiveProjectId] = useState(null);
-            const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+            // ÄNDERUNG: Standardmäßig auf false (zugeklappt) gesetzt
+            const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
             const [forceWidgetMode, setForceWidgetMode] = useState(false);
             const [showAddModal, setShowAddModal] = useState(false);
             const [showPinInfo, setShowPinInfo] = useState(false);
@@ -79,7 +80,6 @@
                     }
                 };
                 window.addEventListener('resize', handleResize);
-                // Check once on mount
                 if (window.innerWidth < 200) setIsSidebarExpanded(false);
                 return () => window.removeEventListener('resize', handleResize);
             }, [isSidebarExpanded]);
@@ -130,7 +130,7 @@
 
             return (
                 <div className="h-full flex bg-gray-50">
-                    {/* Main Content (verschwindet wenn schmal ODER wenn Widget-Modus aktiv) */}
+                    {/* Main Content */}
                     <div className={`${forceWidgetMode ? 'hidden' : 'hidden md:flex'} flex-1 p-8 flex-col justify-center max-w-4xl mx-auto`}>
                         <h1 className="text-3xl font-bold mb-4 text-gray-900">Arbeitstag</h1>
                         <p className="mb-8 text-gray-600">Nutze den Widget-Button (oben rechts), um nur die Leiste zu sehen.</p>
@@ -149,10 +149,14 @@
                     </div>
 
                     {/* Sidebar: Breite passt sich an */}
-                    <div className={`h-full bg-slate-900 text-white shadow-xl flex flex-col transition-all duration-300 z-50
+                    {/* ÄNDERUNG: onMouseEnter und onMouseLeave hinzugefügt */}
+                    <div 
+                        onMouseEnter={() => setIsSidebarExpanded(true)}
+                        onMouseLeave={() => setIsSidebarExpanded(false)}
+                        className={`h-full bg-slate-900 text-white shadow-xl flex flex-col transition-all duration-300 z-50
                         ${forceWidgetMode ? 'w-full' : (isSidebarExpanded ? 'w-full md:w-52' : 'w-16 md:w-16')} flex-shrink-0 border-l border-slate-800 relative`}
                     >
-                        {/* Header: Mit Padding Top für Mac Ampel */}
+                        {/* Header */}
                         <div className="p-3 pt-4 flex justify-between items-center bg-slate-950 border-b border-slate-800">
                             {isSidebarExpanded && <span className="font-bold tracking-wide pl-1 truncate text-sm">Zeit</span>}
                             <div className={`flex gap-1 ${isSidebarExpanded ? '' : 'w-full justify-center'}`}>
@@ -168,7 +172,6 @@
                         <div className="flex-1 overflow-y-auto p-2 space-y-3 custom-scrollbar">
                             {projects.map(p => {
                                 const active = activeProjectId === p.id;
-                                // Zentrierung im eingeklappten oder Widget-Modus
                                 const justifyClass = isSidebarExpanded ? '' : 'justify-center';
                                 
                                 return (
